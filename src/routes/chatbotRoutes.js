@@ -59,4 +59,10 @@ router.get("/webhook/facebook", (req, res) => {
   }
 });
 
+// Thêm API lấy message cần review
+router.get("/messages/need-review", chatbotController.getMessagesNeedReview);
+
+// Thêm API cập nhật nhãn intent cho message
+router.post("/messages/:messageId/label", chatbotController.labelMessageIntent);
+
 module.exports = router;

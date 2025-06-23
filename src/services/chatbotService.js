@@ -107,6 +107,18 @@ class ChatbotService {
       throw new Error("Conversation not found");
     }
 
+    // Nếu là message của user và có intent/confidence thì gắn need_review nếu confidence thấp
+    if (
+      sender === "user" &&
+      metadata.intent &&
+      typeof metadata.confidence === "number"
+    ) {
+      if (metadata.confidence < 0.7) {
+        if (!metadata) metadata = {};
+        metadata.need_review = true;
+      }
+    }
+
     conversation.messages.push({
       text,
       sender,

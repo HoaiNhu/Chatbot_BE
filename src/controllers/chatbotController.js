@@ -274,6 +274,83 @@ class ChatbotController {
       });
     }
   }
+
+  // Lấy các message cần review
+  async getMessagesNeedReview(req, res) {
+    try {
+      // Tìm tất cả messages có need_review
+      const conversations = await Conversation.find({
+        "messages.metadata.need_review": true,
+      });
+      // Gom tất cả message cần review lại
+      let messages = [];
+      conversations.forEach((conv) => {
+        conv.messages.forEach((msg) => {
+          if (msg.metadata && msg.metadata.need_review) {
+            messages.push({
+              conversationId: conv._id,
+              sessionId: conv.sessionId,
+              messageId: msg._id,
+              text: msg.text,
+              intent: msg.intent,
+              confidence: msg.confidence,
+              createdAt: msg.timestamp,
+            });
+          }
+        });
+      });
+      res.json({ success: true, data: messages });
+    } catch (error) {
+      console.error("Get messages need review error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get messages need review",
+        error: error.message,
+      });
+    }
+  }
+
+  // Cập nhật intent cho message và bỏ need_review
+  async labelMessageIntent(req, res) {
+    try {
+      const { messageId } = req.params;
+      const { intent } = req.body;
+      if (!intent) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Intent is required" });
+      }
+      // Tìm conversation chứa message này
+      const conversation = await Conversation.findOne({
+        "messages._id": messageId,
+      });
+      if (!conversation) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Message not found" });
+      }
+      // Cập nhật intent và bỏ need_review cho message
+      conversation.messages.forEach((msg) => {
+        if (msg._id.toString() === messageId) {
+          msg.intent = intent;
+          if (msg.metadata) {
+            msg.metadata.need_review = false;
+          } else {
+            msg.metadata = { need_review: false };
+          }
+        }
+      });
+      await conversation.save();
+      res.json({ success: true, message: "Intent updated successfully" });
+    } catch (error) {
+      console.error("Label message intent error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to update intent",
+        error: error.message,
+      });
+    }
+  }
 }
 
 module.exports = new ChatbotController();
