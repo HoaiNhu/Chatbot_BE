@@ -4,7 +4,10 @@ const { v4: uuidv4 } = require("uuid");
 
 class ChatbotService {
   constructor() {
-    this.apiUrl = process.env.CHATBOT_API_URL || "http://localhost:8000/chat";
+    //this.apiUrl = process.env.CHATBOT_API_URL || "http://localhost:8000/chat";
+    this.apiUrl =
+      process.env.CHATBOT_API_URL_PROD ||
+      "https://proj-chatbot.onrender.com/chat";
   }
 
   // Tạo session mới
