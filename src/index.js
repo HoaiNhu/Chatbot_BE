@@ -23,7 +23,7 @@ app.use(
   cors({
     origin:
       process.env.NODE_ENV === "production"
-        ? ["https://your-frontend-domain.com"]
+        ? ["https://chatbot-ui-uc7o.onrender.com"]
         : ["http://localhost:3000"],
     credentials: true,
   })
