@@ -23,8 +23,10 @@ app.use(
   cors({
     origin:
       process.env.NODE_ENV === "production"
-        ? ["https://chatbot-ui-uc7o.onrender.com"]
-        : ["http://localhost:3000"],
+        ? "https://chatbot-ui-uc7o.onrender.com"
+        : "http://localhost:3000",
+    methods: "GET,POST,PUT,DELETE,OPTIONS",
+    allowedHeaders: "Content-Type,Authorization",
     credentials: true,
   })
 );
