@@ -3,6 +3,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
+const http = require("http");
+const socketIo = require("socket.io");
 require("dotenv").config();
 
 // Import modules
@@ -10,6 +12,14 @@ const connectDB = require("./config/database");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 
 const app = express();
+const server = http.createServer(app); // Tạo server HTTP từ express
+const io = socketIo(server, {
+  cors: {
+    origin: "*", // Cho phép mọi domain, production thì nên giới hạn
+    methods: ["GET", "POST"],
+  },
+});
+app.locals.io = io;
 
 // Connect to MongoDB
 connectDB();
@@ -96,6 +106,14 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// Lắng nghe kết nối socket
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id);
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
@@ -119,7 +137,7 @@ app.use("*", (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3001;
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Chatbot backend server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/chatbot/health`);

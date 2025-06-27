@@ -41,7 +41,24 @@ router.post(
 router.get("/statistics", chatbotController.getStatistics);
 
 // Facebook Messenger webhook
-router.post("/webhook/facebook", chatbotController.facebookWebhook);
+router.post("/webhook/facebook", async (req, res, next) => {
+  try {
+    await chatbotController.facebookWebhook(req, res);
+    // Sau khi xử lý webhook, emit message mới qua socket.io
+    const io = req.app.locals.io;
+    const { senderId, messageText } = req.body; // Cần đảm bảo controller trả về hoặc lưu thông tin này
+    if (io && senderId && messageText) {
+      io.emit("new_message", {
+        text: messageText,
+        sender: "facebook",
+        userId: senderId,
+        timestamp: new Date(),
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Webhook verification for Facebook
 router.get("/webhook/facebook", (req, res) => {
