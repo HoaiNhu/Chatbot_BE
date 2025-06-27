@@ -217,6 +217,8 @@ class ChatbotController {
           const message = webhookEvent.message?.text;
 
           if (message) {
+            console.log(`Facebook message from ${senderId}: ${message}`);
+
             // Tạo hoặc lấy session cho Facebook user
             let conversation = await Conversation.findOne({
               userId: senderId,
@@ -238,8 +240,8 @@ class ChatbotController {
               senderId
             );
 
-            // Gửi phản hồi về Facebook (cần implement Facebook API)
-            // await sendFacebookMessage(senderId, response.text);
+            // Gửi phản hồi về Facebook
+            await chatbotService.sendFacebookMessage(senderId, response.text);
           }
         }
 

@@ -286,6 +286,44 @@ class ChatbotService {
       }
     );
   }
+
+  // Gửi tin nhắn qua Facebook Messenger
+  async sendFacebookMessage(userId, message) {
+    try {
+      const facebookToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+
+      if (!facebookToken) {
+        console.error("Facebook Page Access Token not configured");
+        return false;
+      }
+
+      const url = "https://graph.facebook.com/v21.0/me/messages";
+      const headers = {
+        Authorization: `Bearer ${facebookToken}`,
+        "Content-Type": "application/json",
+      };
+
+      const payload = {
+        recipient: { id: userId },
+        message: { text: message },
+      };
+
+      const response = await axios.post(url, payload, { headers });
+
+      if (response.status === 200) {
+        console.log(`Đã gửi tin nhắn Facebook cho ${userId}: ${message}`);
+        return true;
+      } else {
+        console.error(
+          `Lỗi gửi tin nhắn Facebook: ${response.status} - ${response.data}`
+        );
+        return false;
+      }
+    } catch (error) {
+      console.error("Lỗi gửi tin nhắn Facebook:", error);
+      return false;
+    }
+  }
 }
 
 module.exports = new ChatbotService();
