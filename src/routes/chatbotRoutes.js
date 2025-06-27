@@ -27,6 +27,11 @@ router.get(
 
 // Conversation management (for admin/agent)
 router.get("/conversations", chatbotController.getConversations);
+router.get(
+  "/conversations/escalated",
+  chatbotController.getEscalatedConversations
+);
+router.post("/conversation/:sessionId/reply", chatbotController.staffReply);
 router.post(
   "/conversation/:sessionId/rate",
   chatbotController.rateConversation

@@ -28,8 +28,32 @@ class ChatbotService {
   // Xử lý tin nhắn từ người dùng
   async processMessage(message, sessionId, userId = null) {
     try {
-      // Lưu tin nhắn người dùng
+      // Kiểm tra trạng thái conversation
+      const conversation = await Conversation.findOne({ sessionId });
+
+      // Lưu tin nhắn người dùng trước
       await this.saveMessage(sessionId, message, "user");
+
+      // Nếu conversation đã được chuyển cho staff, bot không trả lời nữa
+      if (conversation && conversation.status === "escalated") {
+        // Chỉ lưu tin nhắn và thông báo cho staff
+        console.log(
+          `Conversation ${sessionId} đã escalated, bot không trả lời`
+        );
+
+        // Thông báo cho staff qua socket.io (nếu có)
+        // TODO: Implement staff notification
+
+        return {
+          text: null, // Bot không trả lời
+          sessionId: sessionId,
+          intent: "escalated",
+          confidence: 1.0,
+          status: "escalated",
+          escalated: true,
+          noReply: true, // Flag để biết bot không trả lời
+        };
+      }
 
       // Gọi FastAPI chatbot
       const botResponse = await this.callFastAPIChatbot(
@@ -37,6 +61,23 @@ class ChatbotService {
         sessionId,
         userId
       );
+
+      // Kiểm tra xem có cần chuyển cho staff không
+      const shouldEscalate = this.shouldEscalateToStaff(message, botResponse);
+
+      if (shouldEscalate) {
+        // Chuyển conversation cho staff
+        await this.escalateToStaff(sessionId, message, botResponse);
+
+        return {
+          text: "Tôi hiểu vấn đề của bạn. Để đảm bảo bạn được hỗ trợ tốt nhất, tôi sẽ chuyển cuộc trò chuyện này cho nhân viên hỗ trợ. Họ sẽ liên hệ với bạn sớm nhất có thể.",
+          sessionId: sessionId,
+          intent: botResponse.intent,
+          confidence: botResponse.confidence,
+          status: "escalated",
+          escalated: true,
+        };
+      }
 
       // Lưu phản hồi của bot
       await this.saveMessage(sessionId, botResponse.text, "bot", {
@@ -54,6 +95,7 @@ class ChatbotService {
         confidence: botResponse.confidence,
         quickReplies: botResponse.quick_replies || [],
         attachments: botResponse.attachments || [],
+        status: "active",
       };
     } catch (error) {
       console.error("Error processing message:", error);
@@ -67,6 +109,107 @@ class ChatbotService {
 
       throw error;
     }
+  }
+
+  // Kiểm tra xem có cần chuyển cho staff không
+  shouldEscalateToStaff(message, botResponse) {
+    // Các trường hợp cần chuyển cho staff:
+
+    // 1. Confidence thấp (< 0.3)
+    if (botResponse.confidence < 0.3) {
+      return true;
+    }
+
+    // 2. Intent cụ thể cần staff (intent = 2 là "escalate")
+    if (botResponse.intent === 2) {
+      return true;
+    }
+
+    // 3. Từ khóa khẩn cấp
+    const urgentKeywords = [
+      "khẩn cấp",
+      "gấp",
+      "ngay lập tức",
+      "lỗi nghiêm trọng",
+      "khiếu nại",
+      "phàn nàn",
+      "không hài lòng",
+      "tức giận",
+      "muốn nói chuyện với người",
+      "chuyển cho nhân viên",
+      "gặp trực tiếp",
+      "gọi điện",
+    ];
+
+    const messageLower = message.toLowerCase();
+    if (urgentKeywords.some((keyword) => messageLower.includes(keyword))) {
+      return true;
+    }
+
+    // 4. Số lần user gửi tin nhắn > 5 (có thể không hài lòng)
+    // TODO: Implement message count check
+
+    return false;
+  }
+
+  // Chuyển conversation cho staff
+  async escalateToStaff(sessionId, userMessage, botResponse) {
+    const conversation = await Conversation.findOne({ sessionId });
+
+    if (!conversation) return;
+
+    // Cập nhật trạng thái
+    conversation.status = "escalated";
+    conversation.priority = this.determinePriority(botResponse);
+    conversation.escalatedAt = new Date();
+    conversation.escalationReason = this.getEscalationReason(
+      userMessage,
+      botResponse
+    );
+
+    // Tự động assign cho staff có sẵn (round-robin hoặc theo chuyên môn)
+    const availableAgent = await this.findAvailableAgent();
+    if (availableAgent) {
+      conversation.assignedAgent = availableAgent.id;
+    }
+
+    await conversation.save();
+
+    // Thông báo cho staff
+    await this.notifyStaff(conversation);
+  }
+
+  // Tìm staff có sẵn
+  async findAvailableAgent() {
+    // TODO: Implement agent selection logic
+    // Có thể dựa trên:
+    // - Số conversation đang xử lý
+    // - Chuyên môn
+    // - Thời gian online
+    return null; // Tạm thời return null
+  }
+
+  // Lý do chuyển cho staff
+  getEscalationReason(message, botResponse) {
+    if (botResponse.confidence < 0.3) {
+      return "Low confidence response";
+    }
+    if (botResponse.intent === 2) {
+      return "User requested escalation";
+    }
+    return "Complex issue requiring human assistance";
+  }
+
+  // Thông báo cho staff
+  async notifyStaff(conversation) {
+    // TODO: Implement staff notification
+    // Có thể qua:
+    // - Socket.IO
+    // - Email
+    // - Push notification
+    console.log(
+      `Staff notification: New escalated conversation ${conversation.sessionId}`
+    );
   }
 
   // Gọi FastAPI chatbot
@@ -220,6 +363,48 @@ class ChatbotService {
     await conversation.save();
 
     return conversation;
+  }
+
+  // Staff trả lời conversation
+  async staffReply(sessionId, message, agentId) {
+    const conversation = await Conversation.findOne({ sessionId });
+
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    // Kiểm tra xem conversation có được assign cho agent này không
+    if (conversation.assignedAgent && conversation.assignedAgent !== agentId) {
+      throw new Error("Conversation not assigned to this agent");
+    }
+
+    // Lưu tin nhắn của staff
+    await this.saveMessage(sessionId, message, "agent", {
+      agentId: agentId,
+      timestamp: new Date(),
+    });
+
+    // Gửi tin nhắn về platform tương ứng
+    if (conversation.platform === "facebook") {
+      // Gửi qua Facebook Messenger
+      await this.sendFacebookMessage(conversation.userId, message);
+    } else if (conversation.platform === "web") {
+      // Gửi qua Socket.IO cho web interface
+      // TODO: Implement Socket.IO notification
+      console.log(`Staff reply to web user ${conversation.userId}: ${message}`);
+    }
+
+    // Cập nhật thời gian hoạt động cuối
+    conversation.lastActivity = new Date();
+    await conversation.save();
+
+    return {
+      text: message,
+      sessionId: sessionId,
+      agentId: agentId,
+      platform: conversation.platform,
+      timestamp: new Date(),
+    };
   }
 
   // Đóng conversation

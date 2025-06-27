@@ -41,10 +41,29 @@ class ChatbotController {
         userId
       );
 
-      res.json({
-        success: true,
-        data: response,
-      });
+      // Kiểm tra xem bot có trả lời không
+      if (response.noReply) {
+        // Bot không trả lời, chỉ thông báo cho staff
+        res.json({
+          success: true,
+          data: {
+            text: null,
+            sessionId: response.sessionId,
+            intent: response.intent,
+            confidence: response.confidence,
+            status: response.status,
+            escalated: true,
+            noReply: true,
+          },
+          message: "Message received, waiting for staff response",
+        });
+      } else {
+        // Bot có trả lời
+        res.json({
+          success: true,
+          data: response,
+        });
+      }
     } catch (error) {
       console.error("Send message error:", error);
       res.status(500).json({
@@ -92,6 +111,35 @@ class ChatbotController {
       res.status(500).json({
         success: false,
         message: "Failed to get conversations",
+        error: error.message,
+      });
+    }
+  }
+
+  // Lấy danh sách conversations cần staff xử lý
+  async getEscalatedConversations(req, res) {
+    try {
+      const { agentId } = req.query;
+      const filters = {
+        status: "escalated",
+        limit: 50,
+      };
+
+      if (agentId) {
+        filters.assignedAgent = agentId;
+      }
+
+      const conversations = await chatbotService.getConversations(filters);
+
+      res.json({
+        success: true,
+        data: conversations,
+      });
+    } catch (error) {
+      console.error("Get escalated conversations error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to get escalated conversations",
         error: error.message,
       });
     }
@@ -240,8 +288,14 @@ class ChatbotController {
               senderId
             );
 
-            // Gửi phản hồi về Facebook
-            await chatbotService.sendFacebookMessage(senderId, response.text);
+            // Chỉ gửi phản hồi nếu bot có trả lời
+            if (response.text && !response.noReply) {
+              await chatbotService.sendFacebookMessage(senderId, response.text);
+            } else if (response.escalated && !response.noReply) {
+              // Lần đầu escalated, gửi thông báo
+              await chatbotService.sendFacebookMessage(senderId, response.text);
+            }
+            // Nếu noReply = true thì không gửi gì cả, để staff trả lời
           }
         }
 
@@ -349,6 +403,40 @@ class ChatbotController {
       res.status(500).json({
         success: false,
         message: "Failed to update intent",
+        error: error.message,
+      });
+    }
+  }
+
+  // Staff trả lời conversation
+  async staffReply(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const { message, agentId } = req.body;
+
+      if (!message || !agentId) {
+        return res.status(400).json({
+          success: false,
+          message: "Message and agentId are required",
+        });
+      }
+
+      const response = await chatbotService.staffReply(
+        sessionId,
+        message,
+        agentId
+      );
+
+      res.json({
+        success: true,
+        data: response,
+        message: "Staff reply sent successfully",
+      });
+    } catch (error) {
+      console.error("Staff reply error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send staff reply",
         error: error.message,
       });
     }
